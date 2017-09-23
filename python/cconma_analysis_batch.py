@@ -66,7 +66,7 @@ dfm.qty = np.round(dfm.qty / years, 0)
 ###########
 
 #n = len(dfm.mem_no.unique())  # use all who reviewed and bought a product
-n = 100
+n = 1000
 
 ###########
 
@@ -283,7 +283,7 @@ dfpcarev.columns = ['mem_no','revPC0','revPC1','revPC2','revPC3']
 #
 # Combine  PCA results
 dfpca = dfpcarev.merge(dfpcaqty, on=['mem_no'], how='outer')
-dfreg = df1s[['mem_no','age','gender', 'marriage' ]].merge(dfpca, on='mem_no', how='right')
+dfreg = df1s[['mem_no','age','gender', 'marriage','recommender' ]].merge(dfpca, on='mem_no', how='right')
 #------------------------------------------------------
 
 
@@ -307,7 +307,7 @@ W = b.SIF.dot( qtywide.iloc[1:N,1:M] )
 # back to pandas dataframe and add the mem_no to join with the regression data
 Wdf = pd.DataFrame(W)
 Wdf = pd.concat(( dfsim.iloc[1:N,0], Wdf), axis=1)
-prefs = [revwide.columns[x].split("_")[0] for x in range(revwide.shape[1])]
+prefs = [revwide.columns[x].split("-")[0] for x in range(revwide.shape[1])]
 prefs[0] = 'mem_no'
 Wdf.columns = prefs
 Wlong = pd.melt(Wdf, id_vars=['mem_no'])
@@ -315,12 +315,14 @@ Wlong.rename(columns={'value':'netWeight', 'variable':'pref'}, inplace=True)
 
 # combine final multi-record regression  dataframe
 dfm.drop(labels=['genderint','marriageint','agecatint'], axis=1, inplace=True)
-dfregall = dfm.merge(dfreg,on=['mem_no','age','gender','marriage'],how='outer')
+dfregall = dfm.merge(dfreg,on=['mem_no','age','gender','marriage','recommender'],how='outer')
 dfregall = Wlong.merge(dfregall, on=['mem_no','pref'],how='inner')
 dfregall.to_csv("dfregall.csv",sep=",",index=False)
 
-timeout = time() - time0       
-if timeout <= 3600: 
+timeout = time() - time0    
+if timeout <= 60:
+    print('\nElapsed time: %s seconds' % ( round(timeout,3) ))
+elif timeout <= 3600: 
     print('\nElapsed time: %s minutes' % ( round(timeout/60,3) ))
 else:
     print('\nElapsed time: %s hours' % ( round(timeout/3600,3) ))
