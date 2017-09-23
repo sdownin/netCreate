@@ -19,6 +19,16 @@ import pickle
 import datetime as dt
 from time import time
 from sklearn.decomposition import PCA, NMF
+from argparse import ArgumentParser
+
+## input arguments
+_default_size = 700
+par = ArgumentParser(description="Network Creation Inference")
+par.add_argument('n', nargs='?', type=int, default=_default_size, help="customer sample size [default 700]")
+args = par.parse_args()
+# sample size
+n = args.n
+print("Running netcreate with sample size %s" % n)
 
 # time
 time0 = time()
@@ -63,12 +73,12 @@ dfm.qty = np.round(dfm.qty / years, 0)
 #
 #----------------------------------------------------
 
-###########
-
-#n = len(dfm.mem_no.unique())  # use all who reviewed and bought a product
-n = 1000
-
-###########
+############
+#
+##n = len(dfm.mem_no.unique())  # use all who reviewed and bought a product
+#n = 1000
+#
+############
 
 np.random.seed(111)
 memsamp = np.int32( np.random.choice(dfm.mem_no.unique(), size=n, replace=False) )
