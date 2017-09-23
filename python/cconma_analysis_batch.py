@@ -9,12 +9,12 @@ PRELIMINARY ANALYSIS
 
 """
 import os
+os.chdir('C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data\\netcreate\\python')
+import netcreate_batch as nc
 os.chdir('C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data')
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import netcreate_batch as nc
 import pickle
 import datetime as dt
 from time import time
@@ -66,7 +66,7 @@ dfm.qty = np.round(dfm.qty / years, 0)
 ###########
 
 #n = len(dfm.mem_no.unique())  # use all who reviewed and bought a product
-n = 200
+n = 100
 
 ###########
 
@@ -174,7 +174,7 @@ b.decompose_tensor(rank=rank, init='nvecs', lambda_A=reg, lambda_R=reg, compute_
 minEdges = int(b.X[0].shape[0]*4)
 
 ## create network via sampling methods specified
-b.net_create(minEdges=minEdges, deterministic=True, Bernoulli=False, 
+b.net_create(minEdges=minEdges, deterministic=True, Bernoulli=True, 
              plotting=False, color_threshold=0.35)
 #print(str(round(time()-time0,3)))
 
@@ -188,7 +188,7 @@ reg = 20
 c.decompose_tensor(rank=rank, init='nvecs', lambda_A=reg, lambda_R=reg, compute_fit=False)
 
 ## create network via sampling methods specified
-c.net_create(minEdges=minEdges, deterministic=True, Bernoulli=False, 
+c.net_create(minEdges=minEdges, deterministic=True, Bernoulli=True, 
              plotting=False, color_threshold=0.35)
 
 

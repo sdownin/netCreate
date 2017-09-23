@@ -274,7 +274,7 @@ def link_prob_rank(x, *args, **kwargs):
                 df.loc[index,'i'] = i
                 df.loc[index,'j'] = j
                 df.loc[index,'prob'] = x[i,j]
-    df = df.sort('prob',axis=0,ascending = False)
+    df = df.sort_values('prob',axis=0,ascending = False).copy()
     return df  
 
 def net_plot(title, AAT, theta, Z, r, lambda_A, lambda_R, layout='fruchterman', plotting = True, graphScale=1.0, color_threshold=0.7, *args, **kwargs):
