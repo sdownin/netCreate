@@ -212,7 +212,7 @@ df = pd.DataFrame({'HrankLreg':b.pred_rank['Bernoulli'][['prob']].reset_index()[
                    'LrankHreg':c.pred_rank['Bernoulli'][['prob']].reset_index()['prob'] })
 
 me = int( np.ceil(c.X[0].shape[0] * (c.X[0].shape[0] - 1) / 50 ) )
-df.iloc[:,:].sort().plot(marker='^',markevery=me,title="Network 'Next Tie Probability'\nby tensor decomp hyperparams")
+df.iloc[:,:].sort_values('HrankLreg').plot(marker='^',markevery=me,title="Network 'Next Tie Probability'\nby tensor decomp hyperparams")
 plt.savefig("next_tie_prob.png",dpi=200)
 
 
@@ -317,7 +317,7 @@ Wlong.rename(columns={'value':'netWeight', 'variable':'pref'}, inplace=True)
 dfm.drop(labels=['genderint','marriageint','agecatint'], axis=1, inplace=True)
 dfregall = dfm.merge(dfreg,on=['mem_no','age','gender','marriage'],how='outer')
 dfregall = Wlong.merge(dfregall, on=['mem_no','pref'],how='inner')
-dfregall.to_csv("dfregall.csv",delimiter=",",index=False)
+dfregall.to_csv("dfregall.csv",sep=",",index=False)
 
 timeout = time() - time0       
 if timeout <= 3600: 

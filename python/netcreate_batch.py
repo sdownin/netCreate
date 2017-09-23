@@ -503,7 +503,7 @@ class netCreate:
 #                   'd':a.pred_rank['deterministic'][['prob']].reset_index()['prob'],
 #                   'm':a.pred_rank['multinomial'][['prob']].reset_index()['prob']})
 #
-#df.iloc[0:2000,:].sort().plot(marker='^',markevery=100,title="Network Tie Probability distributions by Sampling Method")
+#df.iloc[0:2000,:].sort_values().plot(marker='^',markevery=100,title="Network Tie Probability distributions by Sampling Method")
 
 
 
