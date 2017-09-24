@@ -407,7 +407,7 @@ plt.plot( np.sort( pred[np.triu_indices(pred.shape[0])] ) )
 #plt.show()
 tols = [];
 aucs = [];
-for tol_i in np.arange(.01,1,.01):
+for i,tol_i in enumerate(np.arange(.001,1,.001)):
     pred =  model.SIF / np.max(model.SIF)
     pred[ pred >= tol_i ] = 1
     pred[ pred < tol_i  ] = 0
@@ -436,7 +436,8 @@ for tol_i in np.arange(.01,1,.01):
     auc_i = auc(fpr, tpr)
     aucs.append( auc_i )
     tols.append( tol_i )
-    print('tol: %.3f | auc: %.3f' % (tol_i, auc_i) )
+    if i % 10 == 0:
+        print('tol: %.3f | auc: %.3f' % (tol_i, auc_i) )
 
 
 optim_tol = tols[np.where(aucs == max(aucs))[0][0] ] 
@@ -468,6 +469,7 @@ y_pred = pred[ rec_indices_triu ]
 fpr, tpr, thresh = roc_curve(y_true, y_pred)
 roc_auc = auc(fpr, tpr)
 conf_mat = confusion_matrix(y_true, y_pred)
+print('\nConfusion Matrix:')
 print(conf_mat)
 
 # plot AUC curve
