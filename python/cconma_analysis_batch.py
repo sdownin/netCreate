@@ -23,16 +23,18 @@ import networkx as nx
 from time import time
 from sklearn.decomposition import PCA, NMF
 from argparse import ArgumentParser
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, confusion_matrix
 from scipy.sparse import csr_matrix
 
 ## input arguments
-_default_size = 700
 par = ArgumentParser(description="Network Creation Inference")
 par.add_argument('n', nargs='?', type=int, default=700, help="customer sample size [default 700]")
+par.add_argument('--tol', type=float, default=.001, help="tolerance above which SIF/max(SIF) weight predicts a tie (y_ij=1) [default 0.001]")
 args = par.parse_args()
 # sample size
 n = args.n
+# tolerance for tie prediction (classification)
+tol = args.tol
 
 # time
 time0 = time()
@@ -74,6 +76,8 @@ dfm.qty = np.round(dfm.qty / years, 0)
 #----------------------------------------------------
 #
 # SAMPLE of n customers
+#  - if n < m (num recommended customers), then use only those m
+#  - if n >= m (num recommended customers), then use m recommended + (n-m) sample of non-recommended
 #
 #----------------------------------------------------
 
@@ -198,7 +202,7 @@ gc.collect()
 
 #--------------- HIGH RANK---LOW REGULATION ---------------------------
 rank = int( b.X[0].shape[0]* 0.99 )   # rank ~ 95% of number of people
-reg = 5
+reg = 2
 
 #time0 = time()
 # decompose tensor
@@ -249,8 +253,7 @@ df = pd.DataFrame({'HrankLreg':b.pred_rank['Bernoulli'][['prob']].reset_index()[
 me = int( np.ceil(c.X[0].shape[0] * (c.X[0].shape[0] - 1) / 50 ) )
 df.iloc[:,:].sort_values('HrankLreg').plot(marker='^',markevery=me,title="Network 'Next Tie Probability'\nby tensor decomp hyperparams")
 plt.savefig("next_tie_prob.png",dpi=200)
-
-
+#plt.show()
 
 
 
@@ -284,6 +287,7 @@ plt.plot(np.arange(1,nComps+1),qtypca.explained_variance_ratio_, marker='^')
 plt.title('Purchases Quantity: Explained Variance')
 plt.xlabel('Principle Components')
 plt.savefig("qty_pca_5.png",dpi=200)
+#plt.show()
  
 nKeep = 4
 qtytrans = qtypca.transform( X )
@@ -306,6 +310,7 @@ plt.plot(np.arange(1,nComps+1),revpca.explained_variance_ratio_, marker='^')
 plt.title('Product Reviews: Explained Variance')
 plt.xlabel('Principle Components')
 plt.savefig("qty_pca_10.png",dpi=200)
+#plt.show()
 
 nKeep = 4
 revtrans = revpca.transform( X )
@@ -387,19 +392,83 @@ for e in el.index:
         print("adding edge %d --> %d" % (edge.recommender, edge.mem_no))
         g.add_edge(int(edge.recommender),int(edge.mem_no))
         
-# sparse adjacency matrix
+# TRUE sparse adjacency matrix
 net_sparse = nx.adjacency_matrix(g)
 net = csr_matrix(net_sparse).toarray()
 
-# test vals
-y_true = net[np.tril_indices(net.shape[0])]
-y_pred = b.SIF[np.tril_indices(b.SIF.shape[0])] / np.max(b.SIF[np.tril_indices(b.SIF.shape[0])])
+#
+# PREDICTED
+#
+print('Searching for optimum tie classification tolerance...')
+model = b
+pred =  model.SIF / np.max(model.SIF)
+plt.figure()
+plt.plot( np.sort( pred[np.triu_indices(pred.shape[0])] ) )
+#plt.show()
+tols = [];
+aucs = [];
+for tol_i in np.arange(.01,1,.01):
+    pred =  model.SIF / np.max(model.SIF)
+    pred[ pred >= tol_i ] = 1
+    pred[ pred < tol_i  ] = 0
+    
+#    # test vals
+#    rec_indices_1 = np.where(net == 1)
+#    rows = [];
+#    cols = [];
+#    for i,j in zip(rec_indices_1[0],rec_indices_1[1]):
+#        if i < j:
+#            rows.append(i)
+#            cols.append(j)
+#    rec_indices_0 = np.where(net == 0)
+#    for k,tup in enumerate(zip(rec_indices_0[0],rec_indices_0[1])):
+#        if tup[0] < tup[1]:   # and k <= 100*len(rec_indices_1[0])
+#            rows.append(tup[0])
+#            cols.append(tup[1])
+#    rec_indices_triu = (rows, cols)
+    rec_indices_triu = np.triu_indices(pred.shape[0])
+    
+    y_true = net[  rec_indices_triu ]
+    y_pred = pred[ rec_indices_triu ]
+    
+    # measure accuracy
+    fpr, tpr, thresh = roc_curve(y_true, y_pred)
+    auc_i = auc(fpr, tpr)
+    aucs.append( auc_i )
+    tols.append( tol_i )
+    print('tol: %.3f | auc: %.3f' % (tol_i, auc_i) )
 
-print('y_true: %d, y_pred: %d' %(y_true.shape[0], y_pred.shape[0]))
+
+optim_tol = tols[np.where(aucs == max(aucs))[0][0] ] 
+print('Optimum tolerance = %.3f' % optim_tol)
+
+plt.figure()
+pd.DataFrame([{'tol':i,'auc':j} for i,j in zip(tols,aucs) ]).plot(x='tol',y='auc', title='Prediction Accuracy by Tie Classification Tolerance')
+plt.axvline(x= optim_tol , color='k')
+plt.axhline(y=.5 , color='k')
+plt.savefig('predition_accuracy_auc_by_tol',  dpi=200  )
+#plt.show()
+
+print('y_true len: %d, y_pred len: %d' %(y_true.shape[0], y_pred.shape[0]))
+
+tol = optim_tol
+
+model = b
+pred =  model.SIF / np.max(model.SIF)
+pred[ pred >= tol ] = 1
+pred[ pred < tol  ] = 0
+
+## test vals
+rec_indices_triu = np.triu_indices(pred.shape[0])
+
+y_true = net[  rec_indices_triu ]
+y_pred = pred[ rec_indices_triu ]
 
 # measure accuracy
 fpr, tpr, thresh = roc_curve(y_true, y_pred)
 roc_auc = auc(fpr, tpr)
+conf_mat = confusion_matrix(y_true, y_pred)
+print(conf_mat)
 
 # plot AUC curve
 plt.figure()
@@ -412,8 +481,9 @@ plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('Netcreate Prediction (%s edges among %s nodes)' % (len(g.edges),len(g.nodes)))
 plt.legend(loc="lower right")
-plt.savefig('netcreate_ROC_'+time0, figsize=(6,6))
-plt.show()
+#
+plt.savefig('netcreate_ROC_%s.png' % str(time0), dpi=200)
+#plt.show()
 
 
 timeout = time() - time0    
