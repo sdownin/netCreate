@@ -309,6 +309,7 @@ class netCreate:
         self.pred_rank = {}
         self.theta = {}
         self.cluster = {}
+        self.index = []
         
     def __repr__(self):
         return "netCreate()"
@@ -316,7 +317,7 @@ class netCreate:
     def __str__(self):
         return "<From str method of netCreate:\nX: %s \nnetwork: %s \ngraph: %s \npred_rank: %s\n>" % (type(self.X),self.network.keys(), self.graph.keys(), self.pred_rank.keys())
         
-    def build_sim_tensor(self, x, offset=0, Pandas=True, matchValue=1, Sim=True, metric='hamming', *args, **kwargs):
+    def build_sim_tensor(self, x, indexCol=True, Pandas=True, matchValue=1, Sim=True, metric='hamming', sampleColumnName='mem_no', *args, **kwargs):
         """build an r-mode similarity adjacency tensor;
         Inputs: offset is number of columns in df to skip (shape(df)[1] =
         offset + r)
@@ -324,10 +325,13 @@ class netCreate:
         output: list of csr_matrix sparse matrices  
         (format for RESCAL_ALS input)
         """
+        if indexCol:
+            self.index = x.iloc[:,0]
+            x = x.iloc[:,1:].copy()
         time0 = time()
         X = []
         discarded = []
-        for j in np.arange(offset,x.shape[1]):
+        for j in range(x.shape[1]):
             if Pandas:
                 if Sim:
                     simmat = 1 - squareform(pdist(np.asarray(x.iloc[:,(j-1):j]), metric) )
@@ -349,7 +353,7 @@ class netCreate:
             else:
                 discarded.append(j)
             # update progress
-            if j % np.ceil((x.shape[1]-offset)/10) == 0 :
+            if j % np.ceil(x.shape[1]/10) == 0 :
                     print('completed feature %s' % ( j ) ) 
         
         print('The following feature indices were discarded containing 0 similarities:')

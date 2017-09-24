@@ -428,6 +428,7 @@ class netCreate:
         self.pred_rank = {}
         self.theta = {}
         self.cluster = {}
+        self.sample = []
         
     def __repr__(self):
         return "netCreate()"
@@ -435,33 +436,22 @@ class netCreate:
     def __str__(self):
         return "<From str method of netCreate:\nX: %s \nnetwork: %s \ngraph: %s \npred_rank: %s\n>" % (type(self.X),self.network.keys(), self.graph.keys(), self.pred_rank.keys())
         
-    def build_sim_tensor(self, x, offset=0, matchValue=1, Sim=True, metric='hamming', *args, **kwargs):
-        """ STEP 1 : build
-            build an r-mode similarity adjacency tensor
-        
-        Parameters
-        ----------
-        x : ndarray
-            input dataframe
-        offset : int
-            number of columns in x to skip (shape(df)[1] = offset + r) where r = number of r relationship types
-        matchValue : int or float
-            values of similarity matrix elements for which matches between members represent pairwise similarities
-        Sim : logical
-            using similarity matrix implies 1 - distances (else distance matrix)
-        metric : str
-            distance metric to use (eg, 'hamming' is proportion of dissimilar elements in vector, which for length-1 vector returns either 0 or 1 )
-        
-        Returns
-        ----------
-        X : list
-            list of csr_matrix sparse matrices (format for RESCAL_ALS input); matrices in list are tensor frontal slices X_k for k in 1...r)
+    def build_sim_tensor(self, x, indexCol=True, Pandas=True, matchValue=1, Sim=True, metric='hamming', sampleColumnName='mem_no', *args, **kwargs):
+        """build an r-mode similarity adjacency tensor;
+        Inputs: offset is number of columns in df to skip (shape(df)[1] =
+        offset + r)
+        df columns [offset:ncol] are the r relationship types;
+        output: list of csr_matrix sparse matrices  
+        (format for RESCAL_ALS input)
         """
+        if indexCol:
+            self.index = x.iloc[:,0]
+            x = x.iloc[:,1:].copy()
         time0 = time()
         X = []
         discarded = []
-        for j in range(offset,x.shape[1]):
-            if isinstance(x, (pd.DataFrame, pd.Series)):  # checking if Pandas object
+        for j in range(x.shape[1]):
+            if Pandas:
                 if Sim:
                     simmat = 1 - squareform(pdist(np.asarray(x.iloc[:,(j-1):j]), metric) )
                 else:
@@ -482,14 +472,19 @@ class netCreate:
             else:
                 discarded.append(j)
             # update progress
-            if j % np.ceil((x.shape[1]-offset)/10) == 0 :
+            if j % np.ceil(x.shape[1]/10) == 0 :
                     print('completed feature %s' % ( j ) ) 
         
         print('The following feature indices were discarded containing 0 similarities:')
         print(discarded)        
         
         timeout = time() - time0   
-        print('\nTensor build elapsed time: %s seconds' % ( round(timeout,3) ))    
+        if timeout <= 120:
+            print('\nTensor build elapsed time: %s seconds' % ( round(timeout,3) ))    
+        elif timeout <= 3600: 
+            print('\nTensor build elapsed time: %s minutes' % ( round(timeout/60,3) ))
+        else:
+            print('\nTensor build elapsed time: %s hours' % ( round(timeout/3600,3) ))
         self.X = X
     
     def decompose_tensor(self, rank, X=None, init='nvecs', lambda_A=10, lambda_R=10, *args, **kwargs):

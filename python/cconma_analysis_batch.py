@@ -8,6 +8,8 @@ CCONMA CUSTOMER NETWORK CREATION
 PRELIMINARY ANALYSIS
 
 """
+from __future__ import division
+
 import os
 os.chdir('C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data\\netcreate\\python')
 import netcreate_batch as nc
@@ -17,18 +19,20 @@ import numpy as np
 import pandas as pd
 import pickle
 import datetime as dt
+import networkx as nx
 from time import time
 from sklearn.decomposition import PCA, NMF
 from argparse import ArgumentParser
+from sklearn.metrics import roc_curve, auc
+from scipy.sparse import csr_matrix
 
 ## input arguments
 _default_size = 700
 par = ArgumentParser(description="Network Creation Inference")
-par.add_argument('n', nargs='?', type=int, default=_default_size, help="customer sample size [default 700]")
+par.add_argument('n', nargs='?', type=int, default=700, help="customer sample size [default 700]")
 args = par.parse_args()
 # sample size
 n = args.n
-print("Running netcreate with sample size %s" % n)
 
 # time
 time0 = time()
@@ -81,8 +85,29 @@ dfm.qty = np.round(dfm.qty / years, 0)
 ############
 
 np.random.seed(111)
-memsamp = np.int32( np.random.choice(dfm.mem_no.unique(), size=n, replace=False) )
+
+#samp_mem = np.int32( np.random.choice(dfm.mem_no.unique(), size=n_mem, replace=False) )
+#samp_rec = np.int32( np.random.choice(dfm.recommender.unique(), size=n_rec, replace=False) )
+#memsamp = list(pd.Series(np.int32(np.concatenate((samp_mem, samp_rec )))).unique())
+# members who also recommended
+mem_rec = list(dfm.mem_no.loc[dfm.mem_no.isin(dfm.recommender)].unique())
+
+n_no_rec = n - len(mem_rec)
+if n_no_rec > 0:
+    samp = np.int32( np.random.choice(dfm.mem_no.loc[~dfm.mem_no.isin(mem_rec)].unique(), size=n_no_rec, replace=False) )
+    memsamp = list(pd.Series(np.int32(np.concatenate((samp, mem_rec )))).unique())
+    len_rec = len(mem_rec)
+    len_no_rec = n_no_rec
+else:
+    memsamp = list(np.int32( np.random.choice(mem_rec, size=n, replace=False) ))
+    len_rec = n
+    len_no_rec = 0
+
 dfsub = dfm.loc[dfm.mem_no.isin(memsamp), : ].copy()
+
+print("Running netcreate with sample size %d (%d recommenders, %d not)" % (n, len_rec, len_no_rec))
+
+
 
 # CAST QUANTITY WIDE---------------------------------
 qtywide = dfsub.pivot_table(index=['mem_no'],columns='pcode',values='qty',
@@ -116,7 +141,7 @@ revwide.iloc[:,1:M] = np.round(2* revwide.iloc[:,1:M],0)
 # join MEMBERS, REVIEWS, QUANTITIES integers as similarity dataframe
 # INPUTE FOR BUILDING SIMILARITY TENSOR
 dfqtyrev = qtywide.merge(revwide, how='outer', on=['mem_no'])
-dfsim = df1s.loc[:,['mem_no','recommender','genderint','marriageint','agecatint']].merge(dfqtyrev, how='right', on='mem_no')
+dfsim = df1s.loc[df1s.mem_no.isin(memsamp),['mem_no','recommender','genderint','marriageint','agecatint']].merge(dfqtyrev, how='right', on='mem_no')
 ## replace
 dfsim.recommender = dfsim.recommender.apply(lambda x: 0 if pd.isnull(x) else int(x))
 #----------------------------------------------------
@@ -152,7 +177,7 @@ b = nc.netCreate()
 
 # bulid sim tensor
 N,M = dfsim.shape
-b.build_sim_tensor( dfsim.iloc[1:N,:] , offset=1)
+b.build_sim_tensor( dfsim )
 
 ## reuse same similarity tensor build in object b
 c = nc.netCreate(b.X)
@@ -206,10 +231,10 @@ print(b)
 nnz = np.sum([ b.X[k].getnnz() for k in range(len(b.X)) ])
 n = b.AAT.shape[0]
 r = len(b.X)
-percentnnz = round( nnz/(n**2 * r) , 5) * 100
+percentnnz = '< 0.01' if 100*nnz/(n**2 * r) < 0.0001 else  round(100 * nnz/(n**2 * r) , 4)
 print('\nSimilarity tensor:')
 print('Dimensions: [ %s x %s x %s ]' % (n, n, r))
-print('Nonzero elements: %s (%s per cent)' % (nnz, percentnnz ))
+print('Nonzero elements: %s (%s %s)' % (nnz, percentnnz, '%' ))
 
 # save netCreate object
 pickle.dump( b , open("nc_regpred_n670_obj_high_rank95_low_reg4_colthresh45.p","wb" ) )
@@ -312,11 +337,11 @@ dfreg = df1s[['mem_no','age','gender', 'marriage','recommender' ]].merge(dfpca, 
 
 # compute the weights matrix
 N,M = qtywide.shape
-W = b.SIF.dot( qtywide.iloc[1:N,1:M] ) 
+W = b.SIF.dot( qtywide.iloc[:,1:M] ) 
 
 # back to pandas dataframe and add the mem_no to join with the regression data
 Wdf = pd.DataFrame(W)
-Wdf = pd.concat(( dfsim.iloc[1:N,0], Wdf), axis=1)
+Wdf = pd.concat(( dfsim.iloc[:N,0], Wdf), axis=1)
 prefs = [revwide.columns[x].split("-")[0] for x in range(revwide.shape[1])]
 prefs[0] = 'mem_no'
 Wdf.columns = prefs
@@ -328,6 +353,68 @@ dfm.drop(labels=['genderint','marriageint','agecatint'], axis=1, inplace=True)
 dfregall = dfm.merge(dfreg,on=['mem_no','age','gender','marriage','recommender'],how='outer')
 dfregall = Wlong.merge(dfregall, on=['mem_no','pref'],how='inner')
 dfregall.to_csv("dfregall.csv",sep=",",index=False)
+
+
+
+#-----------------------------------------------------
+#
+# Network Prediction 
+# AUC of SIF weights vs actual recommended ties. 
+#
+#_----------------------------------------------------
+print("Assessing network prediction accuracy...")
+## save network structure
+# edgelist
+el = dfregall.loc[:,['recommender','mem_no']].drop_duplicates()
+el.to_csv('graph_el.csv', index=False)
+
+# vertex attributes df
+# all memnos in connected graph : mem_no and recommender
+#memnos = list(pd.Series(np.int32(np.concatenate((dfregall.mem_no.values, dfregall.recommender.values )))).unique())
+# only memnos
+vertices = df1.loc[df1.mem_no.isin(el.mem_no),:].copy()
+vertices.to_csv('graph_vertices.csv', index=False)
+
+# true network
+g = nx.Graph()
+# add nodes with colors of group
+for n in vertices.mem_no: 
+    g.add_node(n)
+# # add edges with weight of theta (probability the link exists)
+for e in el.index:
+    edge = el.loc[e,:]
+    if edge.recommender in g.nodes:
+        print("adding edge %d --> %d" % (edge.recommender, edge.mem_no))
+        g.add_edge(int(edge.recommender),int(edge.mem_no))
+        
+# sparse adjacency matrix
+net_sparse = nx.adjacency_matrix(g)
+net = csr_matrix(net_sparse).toarray()
+
+# test vals
+y_true = net[np.tril_indices(net.shape[0])]
+y_pred = b.SIF[np.tril_indices(b.SIF.shape[0])] / np.max(b.SIF[np.tril_indices(b.SIF.shape[0])])
+
+print('y_true: %d, y_pred: %d' %(y_true.shape[0], y_pred.shape[0]))
+
+# measure accuracy
+fpr, tpr, thresh = roc_curve(y_true, y_pred)
+roc_auc = auc(fpr, tpr)
+
+# plot AUC curve
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Netcreate Prediction (%s edges among %s nodes)' % (len(g.edges),len(g.nodes)))
+plt.legend(loc="lower right")
+plt.savefig('netcreate_ROC_'+time0, figsize=(6,6))
+plt.show()
+
 
 timeout = time() - time0    
 if timeout <= 60:
