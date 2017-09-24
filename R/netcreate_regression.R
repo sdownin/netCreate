@@ -1,5 +1,5 @@
-setwd("C:\\Users\\Stephen\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data\\crossval")
-library(memisc)
+setwd("C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data")
+# library(memisc)
 library(plyr)
 library(reshape2)
 library(ggplot2)
@@ -7,10 +7,10 @@ library(igraph)
 library(lme4)
 library(MASS)
 library(lubridate)
-library(plot3D)
+# library(plot3D)
 library(colorRamps)
 
-df <- read.table("dfregall.csv",sep=",",header=T, stringsAsFactors = F)
+df <- read.table("rec_n500\\dfregall.csv",sep=",",header=T, stringsAsFactors = F)
 factorcols <- c('mem_no','pref','pcode','gender','marriage')
 # make factors cols into factors
 for (col in factorcols) {
@@ -26,9 +26,9 @@ length(unique(df$mem_no))
 
 df <- na.omit(df)
 
-
+## `tenure` removed  -- check if need to add it back in
 # rescale
-rscols <- c('netWeight','price','point','age','tenure','revPC0','revPC1','revPC2','revPC3','qtyPC0','qtyPC1','qtyPC2','qtyPC3')
+rscols <- c('netWeight','price','point','age','revPC0','revPC1','revPC2','revPC3','qtyPC0','qtyPC1','qtyPC2','qtyPC3')
 df[,rscols] <- scale(df[,rscols], scale=T, center=F)
 
 
