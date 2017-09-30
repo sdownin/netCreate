@@ -425,6 +425,7 @@ class netCreate:
             
         self.network = {}
         self.graph = {}
+        self.g = nx.Graph()
         self.pred_rank = {}
         self.theta = {}
         self.cluster = {}
@@ -436,7 +437,7 @@ class netCreate:
     def __str__(self):
         return "<From str method of netCreate:\nX: %s \nnetwork: %s \ngraph: %s \npred_rank: %s\n>" % (type(self.X),self.network.keys(), self.graph.keys(), self.pred_rank.keys())
         
-    def build_sim_tensor(self, x, indexCol=True, Pandas=True, matchValue=1, Sim=True, metric='hamming', sampleColumnName='mem_no', *args, **kwargs):
+    def build_sim_tensor(self, x, indexCol=True, Pandas=True, matchValue=1, Sim=True, metric='hamming', sampleColumnName='mem_no', edgeList=None, *args, **kwargs):
         """build an r-mode similarity adjacency tensor;
         Inputs: offset is number of columns in df to skip (shape(df)[1] =
         offset + r)
@@ -447,6 +448,17 @@ class netCreate:
         if indexCol:
             self.index = x.iloc[:,0]
             x = x.iloc[:,1:].copy()
+            if edgeList:
+                # add nodes with colors of group
+                for n in self.index: 
+                    self.g.add_node(int(n))
+                # # add edges with weight of theta (probability the link exists)
+                for e in edgeList.index:
+                    edge = edgeList.loc[e,:]
+                    if edge.recommender in self.g.nodes:
+                        print("adding edge %d --> %d" % (edge.recommender, edge.mem_no))
+                        self.g.add_edge(int(edge.recommender),int(edge.mem_no))
+            
         time0 = time()
         X = []
         discarded = []

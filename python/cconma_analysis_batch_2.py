@@ -13,6 +13,7 @@ from __future__ import division
 import os
 os.chdir('C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data\\netcreate\\python')
 import netcreate_batch as nc
+reload(nc)
 os.chdir('C:\\Users\\T430\\Google Drive\\PhD\\Dissertation\\3. network analysis\\data')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -53,8 +54,7 @@ df1 = pd.read_csv("df1_mem.csv")
 df2 = pd.read_csv("df2_rev.csv")
 
 # product ORDER QUANTITY by member
-df3 = pd.read_csv("df3_qty_pd_half.csv")  # 'df3_qty'
-el = df3[['recommender','mem_no']].copy().drop_duplicates()
+df3 = pd.read_csv("df3_qty_rec.csv")  # 'df3_qty'
 
 ## REMOVE mem_no=0
 df1 = df1.loc[df1.mem_no != 0,:].copy()
@@ -69,6 +69,7 @@ df1s = df1.loc[df1.mem_no.isin(revmem), : ].copy()
 # keep only ordered products that are also reviewed
 dfm = df3s[['mem_no','pref','pd_half','qty','avg_price']].merge(df2, how='inner', on=['pref','mem_no'])
 dfm = dfm.merge(df1s, how='outer', on=['mem_no'])
+
 
 # make purchases quantities yearly average and then round
 #years = 22/12
@@ -95,7 +96,7 @@ np.random.seed(111)
 #samp_rec = np.int32( np.random.choice(dfm.recommender.unique(), size=n_rec, replace=False) )
 #memsamp = list(pd.Series(np.int32(np.concatenate((samp_mem, samp_rec )))).unique())
 # members who also recommended
-mem_rec = list(dfm.mem_no.loc[dfm.mem_no.isin(dfm.recommender)].unique())
+mem_rec = list(dfm.mem_no.loc[dfm.recommender.isin(dfm.mem_no)].unique())
 
 n_no_rec = n - len(mem_rec)
 if n_no_rec > 0:
@@ -115,7 +116,7 @@ print("Running netcreate with sample size %d (%d recommenders, %d not)" % (n, le
 
 
 # CAST QUANTITY WIDE---------------------------------
-qtywide = dfsub.pivot_table(index=['mem_no'],columns='pcode',values='qty',
+qtywide = dfsub.pivot_table(index=['mem_no'],columns='pref',values='qty',
                          aggfunc= np.sum, fill_value = np.nan )
 qtywide.reset_index(inplace=True)
 
@@ -133,7 +134,7 @@ revwide = dfsub.pivot_table(index=['mem_no'],columns='pcode',values='point',
                          aggfunc = np.mean, fill_value = np.nan)
 revwide.reset_index(inplace=True)
 
-rcols = [ '%s_REV' % (x) for x in revwide.columns[1:revwide.shape[1]]]
+rcols = [ '%s_REV' % (x.split('-')[0]) for x in revwide.columns[1:revwide.shape[1]]]
 rcols.insert(0,'mem_no')
 revwide.columns = rcols
 
@@ -272,7 +273,9 @@ plt.savefig("next_tie_prob.png",dpi=200)
 qtywide.replace(np.nan, 0, inplace=True)
 
 # impute missing review values of product pref review by all customer who have reviewed it
-revwide = revwide.fillna(revwide.mean(axis=0))
+revwide = revwide.fillna(revwide.mean(axis=0)).copy()
+for i,col in enumerate(revwide.columns[1:]):
+    revwide.replace(np.nan, revwide.iloc[:,i].mean(), inplace=True)
 
 #-------------------------------------------
 # QUANTITY PCA 
@@ -303,7 +306,7 @@ dfpcaqty.columns = ['mem_no','qtyPC0','qtyPC1', 'qtyPC2', 'qtyPC3']
 
 nComps = 10
 N, M = revwide.shape
-X = revwide.iloc[:,1:M]
+X = revwide.iloc[:,1:M].copy()
 revpca = PCA(n_components = nComps)
 revpca.fit( X )
 plt.figure()
@@ -348,7 +351,7 @@ W = b.SIF.dot( qtywide.iloc[:,1:M] )
 # back to pandas dataframe and add the mem_no to join with the regression data
 Wdf = pd.DataFrame(W)
 Wdf = pd.concat(( dfsim.iloc[:N,0], Wdf), axis=1)
-prefs = [revwide.columns[x].split("-")[0] for x in range(revwide.shape[1])]
+prefs = pd.Series([revwide.columns[x].split("-")[0] for x in range(revwide.shape[1])]).unique()
 prefs[0] = 'mem_no'
 Wdf.columns = prefs
 Wlong = pd.melt(Wdf, id_vars=['mem_no'])
@@ -387,10 +390,12 @@ g = nx.Graph()
 for n in vertices.mem_no: 
     g.add_node(int(n))
 # # add edges with weight of theta (probability the link exists)
+count = 0;
 for e in el.index:
     edge = el.loc[e,:]
     if edge.recommender in g.nodes:
-        print("adding edge %d --> %d" % (edge.recommender, edge.mem_no))
+        count = count + 1
+        print("%d. adding edge %d --> %d" % (count, edge.recommender, edge.mem_no))
         g.add_edge(int(edge.recommender),int(edge.mem_no))
         
 # TRUE sparse adjacency matrix
@@ -456,7 +461,8 @@ plt.savefig('predition_accuracy_auc_by_tol',  dpi=200  )
 
 print('y_true len: %d, y_pred len: %d' %(y_true.shape[0], y_pred.shape[0]))
 
-tol = optim_tol
+#tol = optim_tol
+tol = .1
 
 model = b
 pred =  model.SIF / np.max(model.SIF)

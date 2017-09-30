@@ -93,7 +93,7 @@ fit3 <- glmer(qty ~ gender + marriage + age + I(age^2) + price + point +
                 qtyPC0 + qtyPC1 + revPC0 + revPC1 +
                 netWeight + 
                 netWeight:price +  netWeight:point +
-                netWeightQtyMOD:price + netWeightQtyMOD:point +
+                netWeightMOD:price + netWeightMOD:point +
                 (1 | pref),
               family=poisson(link="log"),  data=df,
               control=glmerControl(optCtrl=list(maxfun=100000),
@@ -103,7 +103,22 @@ fit3 <- glmer(qty ~ gender + marriage + age + I(age^2) + price + point +
               )
 ); summary(fit3)
 
-screenreg(list(fit1,fit2,fit3), digits = 3)
+fit4 <- glmer(qty ~ gender + marriage + age + price + point +
+                qtyPC0 + qtyPC1 + revPC0 + revPC1 +
+                netWeight + I(netWeight^2) +
+                netWeight:price +  netWeight:point +
+                (1 | pref),
+              family=poisson(link="log"),  data=df,
+              control=glmerControl(optCtrl=list(maxfun=100000),
+                                   check.conv.grad=.makeCC("warning",
+                                                           tol = 5e-3,
+                                                           relTol = NULL)
+              )
+); summary(fit4)
+
+screenreg(list(fit1,fit2,fit3,fit4), digits = 3)
+
+save(fit1,fit2,fit3,fit4, file="netcreate_regression_n500.RData")
 
 # summary(fit1)
 # summary(fit2)

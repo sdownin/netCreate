@@ -27,6 +27,10 @@ from sklearn.decomposition import PCA, NMF
 from time import time
 #from nimfa import models
 
+#--------------------------------------------------------------------
+def getDbCon(host='localhost', port=3306, user='root', passwd='', db='cconma',charset='utf8'):
+    return pymysql.connect(host=host,port=port,user=user,passwd=passwd,db=db,charset=charset)
+
 #-----------------------------------------------------
 #
 #
@@ -41,7 +45,7 @@ from time import time
 # all CUSTOMERS who ordered at least one product
 #
 #-----------------------------------------------------
-con = pymysql.connect(host='localhost', port=3306, user='root', passwd='', db='cconma',charset='utf8')
+con = getDbCon()
 sql1 = "\
 SELECT a.mem_no,  \
 CASE WHEN a.recommender = 0 THEN 0 \
@@ -92,7 +96,7 @@ df1.loc[df1.recommender!=0,:].to_csv("df1_mem.csv", index=False )
 # all PRODUCT REVIEWS
 #
 #-------------------------------------------------
-con = pymysql.connect(host='localhost', port=3306, user='root', passwd='Rebwooky2008', db='Cconma_db1',charset='utf8')
+con = getDbCon()
 sql2 = "\
 SELECT mem_no, \
 pcode, \
@@ -115,57 +119,97 @@ df2['pref'] = df2.pcode.str.split("-").apply(lambda x: x[0])
 #
 #-------------------------------------------------
 
-con = pymysql.connect(host='localhost', port=3306, user='root', passwd='Rebwooky2008', db='Cconma_db1',charset='utf8')
+#con = getDbCon()
+#sql3 = "\
+#SELECT a.mem_no,  \
+#date(a.order_date) as odate,  \
+#concat(year(a.order_date),'-',quarter(a.order_date)) as pd_quarter,  \
+#concat(year(a.order_date),'-', (CASE WHEN MONTH(a.order_date) <= 6 THEN 1 ELSE 2 END) ) as pd_half,  \
+#b.pcode,  \
+#b.order_number as qty, \
+#b.order_price as price  \
+#FROM cconma_order as a  \
+#JOIN cconma_order_product as b  \
+#ON a.ocode = b.ocode \
+#where a.mem_no <> 0;  \
+#"
+#df3 = psql.read_sql(sql3,con)
+#con.close()
+
+con = getDbCon()
 sql3 = "\
-SELECT a.mem_no,  \
-date(a.order_date) as odate,  \
-b.pcode,  \
-b.order_number as qty, \
-b.order_price as price  \
-FROM cconma_order as a  \
-JOIN cconma_order_product as b  \
-ON a.ocode = b.ocode;  \
+SELECT m.mem_no,  \
+m.recommender,  \
+SUBSTRING_INDEX(b.pcode,'-', 1) pref,  \
+concat(year(a.order_date),'-', (CASE WHEN MONTH(a.order_date) <= 6 THEN 1 ELSE 2 END) ) as pd_half,  \
+SUM(COALESCE(b.order_number, 0)) as qty, \
+AVG(b.order_price) as avg_price  \
+FROM  cconma_member as m \
+INNER JOIN cconma_order as a  ON a.mem_no = m.mem_no \
+INNER JOIN cconma_order_product as b  ON a.ocode = b.ocode \
+where m.mem_no <> 0 and m.recommender <> 0 \
+group by pd_half, mem_no, pref;  \
 "
 df3 = psql.read_sql(sql3,con)
 con.close()
 
+df3sub = df3.loc[df3.recommender.isin(df3.mem_no)].copy()
+
+#con = getDbCon()
+#sql3 = "\
+#SELECT m.mem_no,  \
+#m.recommender,  \
+#SUBSTRING_INDEX(b.pcode,'-', 1) pref,  \
+#date(a.order_date) as date, \
+#COALESCE(b.order_number, 0) as qty, \
+#AVG(b.order_price) as avg_price  \
+#FROM  cconma_member as m \
+#INNER JOIN cconma_order as a  ON a.mem_no = m.mem_no \
+#INNER JOIN cconma_order_product as b  ON a.ocode = b.ocode \
+#where m.mem_no <> 0 and m.recommender <> 0;  \
+#"
+#df3 = psql.read_sql(sql3,con)
+#con.close()
+
 # split at "-" and keep only first element in split list per row
-df3['pref'] = df3.pcode.str.split("-").apply(lambda x: x[0])
-cols = list(df3)
-cols.insert(0, cols.pop(len(cols)-1))
-df3 = df3[cols]
-df3.head()
+#df3['pref'] = df3.pcode.str.split("-").apply(lambda x: x[0])
+#cols = list(df3)
+#cols.insert(0, cols.pop(len(cols)-1))
+#df3 = df3[cols]
+#df3.head()
 
 
-
-df3.to_csv("memno_pcode_ocode_qty_join.csv", index=False)
+#df3.to_csv("df3_qty_rec.csv", index=False)
+df3sub.to_csv("df3_qty_rec.csv", index=False)
 
 # faster to load from CSV avoid slow SQL join
 #dtypes = {'mem_no':np.int32, 'odate':dt.datetime(), 'pcode':object, 'qty':np.int32}
 #names = ['mem_no','odate','pcode','qty']
-df3 = pd.read_csv("memno_pcode_ocode_qty_join.csv", sep=",")
-df3['odate'] = pd.to_datetime(df3.odate, format='%Y-%m-%d')
-
-df3.drop(labels=['ocode','price'], axis=1, inplace=True)
+#df3 = pd.read_csv("memno_pcode_ocode_qty_join.csv", sep=",")
+#df3['odate'] = pd.to_datetime(df3.odate, format='%Y-%m-%d')
+#
+#for lab in ['ocode','price']:
+#    if lab in list(df3.columns):
+#        df3.drop(labels=lab, axis=1, inplace=True)
 
 #-------------------------------------------------
 ##make pcode prefix variable
 #-------------------------------------------------
 # split at "-" and keep only first element in split list per row
-df3['pref'] = df3.pcode.str.split("-").apply(lambda x: x[0])
-cols = list(df3)
-cols.insert(0, cols.pop(len(cols)-1))
-df3 = df3[cols]
-df3.head()
+#df3['pref'] = df3.pcode.str.split("-").apply(lambda x: x[0])
+#cols = list(df3)
+#cols.insert(0, cols.pop(len(cols)-1))
+#df3 = df3[cols]
+#df3.head()
 
 #----------------------------------------------------
 # # order FREQ by CUSTOMER, PRODUCTPREFIX
 #----------------------------------------------------
 
 # checking orders by date to make train/test split by time
-df3.loc[df3.odate < '2014-06-01', :].shape[0]
-df3.loc[df3.odate >= '2014-06-01', :].shape[0]
-
+#df3.loc[df3.odate < '2014-06-01', :].shape[0]
+#df3.loc[df3.odate >= '2014-06-01', :].shape[0]
+#
 
 
 
@@ -182,7 +226,8 @@ pcfsub = pcf.loc[pcf.qty > 2,:]
 #---------------------------------------------------
 # Make train and test subsets by date
 #_-------------------------------------------------
-df3agg = df3.groupby(['mem_no','pref']).agg({'qty':sum})
+df3agg = df3.groupby(['mem_no','pref','pd_half']).agg({'qty':sum})
+#df3agg = df3.groupby(['mem_no','pref','pd_quarter']).agg({'qty':sum})
 df3agg.reset_index(inplace=True)
 
 # training set 2012 January to  2014 June
